@@ -12,8 +12,8 @@ from bot.states.order import Order
 from bot.keyboards.inline import *
 from bot.keyboards.reply import *
 from bot.filters.pair_param_filter import AmountInRange
-from bot.services.users import UserService
-from bot.services.orders import OrdersService
+from bot.services import UserService
+from bot.services import OrderService
 
 import json
 
@@ -153,9 +153,7 @@ async def process_correct_value(
     await state.update_data(client_value=message.text)
     data = await state.get_data()
 
-    order_service = OrdersService()
-
-    co_value = order_service.calculate_company_value(data)
+    co_value = OrderService.calculate_company_value(data)
 
     await state.update_data(co_value=co_value)
     await message.answer(
@@ -190,10 +188,7 @@ async def process_name(
     await state.set_state(Order.email)
     await state.update_data(name=message.text)
 
-    user_service = UserService(session)
-
-    await user_service.update_user_name(message.from_user.id, message.text)
-    user = await user_service.get_user(message.from_user.id)
+    user = await UserService(session).update_user_name(message.from_user.id, message.text)
 
     if user.email is not None:
         await message.answer(
@@ -223,9 +218,7 @@ async def process_correct_email(
     await state.update_data(email=message.text)
     data = await state.get_data()
 
-    user_service = UserService(session)
-    user = await user_service.get_user(message.from_user.id)
-    await user_service.update_user_email(message.from_user.id, message.text)
+    user = await UserService(session).update_user_email(message.from_user.id, message.text)
 
     co_cur_name = data["co_cur_name"]
     message_text = (
@@ -274,11 +267,12 @@ async def process_phone(
     Seventh step
     Saves user phone number and asks for account on the next step
     """
-    user_service = UserService(session)
     await state.set_state(Order.to_acc)
     await state.update_data(phone=message.text)
 
+    user_service = UserService(session)
     await user_service.update_user_phone(message.from_user.id, message.text)
+
     await message.answer(
         "Введіть номер рахунку на який буде виплата",
         reply_markup=ReplyKeyboardRemove()

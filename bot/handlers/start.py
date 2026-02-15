@@ -1,6 +1,6 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from bot.services.users import UserService
+from bot.services.user import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()

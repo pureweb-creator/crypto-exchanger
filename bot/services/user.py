@@ -26,6 +26,9 @@ class UserService():
         if user.email != new_email:
             user.email = new_email
             await self.session.commit()
+            return user
+
+        return user
 
     async def update_user_phone(self, tg_id: int, new_phone: str):
         user = await self.session.scalar(select(User).where(User.id == tg_id))
@@ -40,3 +43,6 @@ class UserService():
         if user.full_name != new_name:
             user.full_name = new_name
             await self.session.commit()
+            return user
+
+        return user

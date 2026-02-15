@@ -6,8 +6,8 @@ from aiogram.fsm.storage.redis import RedisStorage
 from bot.core.config import Settings
 from bot.handlers import start, exchange
 from bot.tasks.exchange import udpate_data
-from bot.middleware.database import DatabaseMiddleware
-from bot.middleware.redis import RedisMiddleware
+from bot.middleware import DatabaseMiddleware
+from bot.middleware import RedisMiddleware
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from redis.asyncio import Redis
