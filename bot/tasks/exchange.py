@@ -1,15 +1,18 @@
 import logging
 import asyncio
 import json
-from bot.utils.load_json import load_json
-from bot.core.redis_loader import redis_client as r
+from redis.asyncio import Redis
 
-async def udpate_data():
+from bot.utils.load_json import load_json
+
+async def udpate_data(r: Redis):
     while True:
         try:
             currencies = await load_json('currencies.json')
             pairs = await load_json('pairs.json')
             # rates = await load_json('rates.json')
+
+
 
             await r.set('exchange:currencies', json.dumps(currencies))
             await r.set('exchange:pairs', json.dumps(pairs))

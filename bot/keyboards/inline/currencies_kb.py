@@ -1,6 +1,10 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-def builder(pairs: dict[str, dict[str, dict]], currencies: dict[str, dict[str, str]]) -> InlineKeyboardBuilder:
+def builder(
+    pairs: dict[str, dict[str, dict]],
+    currencies: dict[str, dict[str, str]]
+) -> InlineKeyboardBuilder:
+
     builder = InlineKeyboardBuilder()
 
     for key in pairs.keys():

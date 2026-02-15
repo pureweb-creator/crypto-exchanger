@@ -1,17 +1,20 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from bot.services.users import set_user
+from bot.services.users import UserService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = Router()
 
 @router.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, session: AsyncSession):
     """
     Starts the bot
     Triggered by /start command
     Shows welcome message
     """
-    await set_user(
+
+    user_service = UserService(session)
+    await user_service.set_user(
         tg_id=message.from_user.id,
         name=message.from_user.full_name
     )

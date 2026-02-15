@@ -18,4 +18,4 @@ RUN chown -R $USERNAME:$USERNAME /app
 
 USER $USERNAME
 
-CMD ["python", "bot.py"]
+# CMD ["python", "bot.py"]

@@ -8,6 +8,4 @@ def builder() -> InlineKeyboardBuilder:
         callback_data="create_order"
     )
 
-    builder.adjust(1)
-
-    return builder
+    return builder.adjust(1)

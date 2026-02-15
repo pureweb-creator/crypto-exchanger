@@ -3,18 +3,29 @@ from aiogram import Bot
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from redis.asyncio import Redis
+
 from bot.states.order import Order
 from bot.keyboards.inline import *
 from bot.keyboards.reply import *
 from bot.filters.pair_param_filter import AmountInRange
-from bot.services import users, orders
-from bot.core.redis_loader import redis_client as r
+from bot.services.users import UserService
+from bot.services.orders import OrdersService
+
 import json
 
 router = Router()
 
 @router.message(Command("exchange"))
-async def cmd_exchange(message: Message, state: FSMContext, bot: Bot) -> None:
+async def cmd_exchange(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    redis: Redis
+) -> None:
     """
     First step
     Start the exchange process
@@ -26,17 +37,22 @@ async def cmd_exchange(message: Message, state: FSMContext, bot: Bot) -> None:
     await state.clear()
     await state.set_state(Order.currency)
 
-    pairs = json.loads(await r.get("exchange:pairs"))
-    currencies = json.loads(await r.get("exchange:currencies"))
+    pairs = json.loads(await redis.get("exchange:pairs"))
+    currencies = json.loads(await redis.get("exchange:currencies"))
 
     await message.answer(
         "Виберіть валюту для обміну",
-        reply_markup=choose_currency.builder(pairs['result'], currencies).as_markup(),
+        reply_markup=currencies_kb.builder(pairs['result'], currencies).as_markup(),
     )
     await bot.delete_message(message.chat.id, message.message_id)
 
 @router.callback_query(Order.currency)
-async def process_currency(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+async def process_currency(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    redis: Redis
+) -> None:
     """
     Second step
 
@@ -49,19 +65,24 @@ async def process_currency(callback: CallbackQuery, state: FSMContext, bot: Bot)
         client_cur_name = callback.data
     )
 
-    pairs = json.loads(await r.get("exchange:pairs"))
+    pairs = json.loads(await redis.get("exchange:pairs"))
     filtered_pairs = pairs['result'][callback.data]
 
     await callback.message.answer(
         f"Виберіть напрям",
-        reply_markup=choose_pair.builder(filtered_pairs).as_markup()
+        reply_markup=pairs_kb.builder(filtered_pairs).as_markup()
     )
     await callback.answer()
 
     await bot.delete_message(callback.message.chat.id, callback.message.message_id)
 
 @router.callback_query(Order.pair)
-async def process_pair(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+async def process_pair(
+    callback: CallbackQuery,
+    state: FSMContext,
+    bot: Bot,
+    redis: Redis
+) -> None:
     """
     Third step
 
@@ -89,7 +110,7 @@ async def process_pair(callback: CallbackQuery, state: FSMContext, bot: Bot) -> 
     data = await state.get_data()
     client_cur_name = data['client_cur_name']
     co_cur_name = callback.data
-    pairs = json.loads(await r.get("exchange:pairs"))
+    pairs = json.loads(await redis.get("exchange:pairs"))
     target_pair = pairs['result'][client_cur_name][co_cur_name]
 
     await state.update_data(
@@ -115,7 +136,10 @@ async def process_pair(callback: CallbackQuery, state: FSMContext, bot: Bot) -> 
     await bot.delete_message(callback.message.chat.id, callback.message.message_id)
 
 @router.message(Order.value, AmountInRange())
-async def process_correct_value(message: Message, state: FSMContext) -> None:
+async def process_correct_value(
+    message: Message,
+    state: FSMContext
+) -> None:
     """
     Fourth step
 
@@ -129,7 +153,9 @@ async def process_correct_value(message: Message, state: FSMContext) -> None:
     await state.update_data(client_value=message.text)
     data = await state.get_data()
 
-    co_value = await orders.calculate_co_value(data)
+    order_service = OrdersService()
+
+    co_value = order_service.calculate_company_value(data)
 
     await state.update_data(co_value=co_value)
     await message.answer(
@@ -140,7 +166,9 @@ async def process_correct_value(message: Message, state: FSMContext) -> None:
     )
 
 @router.message(Order.value)
-async def process_worng_value(message: Message) -> None:
+async def process_worng_value(
+    message: Message
+) -> None:
     """
     Fourth step
     Processes incorrect amount to exchange
@@ -149,7 +177,11 @@ async def process_worng_value(message: Message) -> None:
     await message.answer("Помилка. Ви ввели невірне число")
 
 @router.message(Order.name)
-async def process_name(message: Message, state: FSMContext) -> None:
+async def process_name(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+) -> None:
     """
     Fifth step
     Saves user full name and asking to enter email on the next step
@@ -158,8 +190,10 @@ async def process_name(message: Message, state: FSMContext) -> None:
     await state.set_state(Order.email)
     await state.update_data(name=message.text)
 
-    await users.update_user_name(message.from_user.id, message.text)
-    user = await users.get_user(message.from_user.id)
+    user_service = UserService(session)
+
+    await user_service.update_user_name(message.from_user.id, message.text)
+    user = await user_service.get_user(message.from_user.id)
 
     if user.email is not None:
         await message.answer(
@@ -171,8 +205,15 @@ async def process_name(message: Message, state: FSMContext) -> None:
     else:
         await message.answer("Введіть e-mail", reply_markup=ReplyKeyboardRemove())
 
-@router.message(Order.email, F.text.regexp(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}"))
-async def process_correct_email(message: Message, state: FSMContext) -> None:
+@router.message(
+    Order.email,
+    F.text.regexp(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,7}")
+)
+async def process_correct_email(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+) -> None:
     """
     Sixth step
     Saves email and asks for a phone number or @revtag depending on currency
@@ -180,11 +221,11 @@ async def process_correct_email(message: Message, state: FSMContext) -> None:
 
     await state.set_state(Order.phone)
     await state.update_data(email=message.text)
-
     data = await state.get_data()
-    user = await users.get_user(message.from_user.id)
 
-    await users.update_user_email(message.from_user.id, message.text)
+    user_service = UserService(session)
+    user = await user_service.get_user(message.from_user.id)
+    await user_service.update_user_email(message.from_user.id, message.text)
 
     co_cur_name = data["co_cur_name"]
     message_text = (
@@ -201,13 +242,16 @@ async def process_correct_email(message: Message, state: FSMContext) -> None:
     await message.answer(message_text, reply_markup=reply_markup)
 
 @router.message(Order.email)
-async def process_worng_email(message: Message) -> None:
+async def process_worng_email(
+    message: Message,
+    session: AsyncSession
+) -> None:
     """
     Sixth step
     Processes incorrect email
     """
-
-    user = await users.get_user(message.from_user.id)
+    user_service = UserService(session)
+    user = await user_service.get_user(message.from_user.id)
     wrong_email_message = "E-mail введено невірно. Будь ласка, спробуйте ще раз"
 
     if user.email is not None:
@@ -221,23 +265,30 @@ async def process_worng_email(message: Message) -> None:
         await message.answer(wrong_email_message, reply_markup=ReplyKeyboardRemove())
 
 @router.message(Order.phone)
-async def process_phone(message: Message, state: FSMContext) -> None:
+async def process_phone(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession
+) -> None:
     """
     Seventh step
     Saves user phone number and asks for account on the next step
     """
-
+    user_service = UserService(session)
     await state.set_state(Order.to_acc)
     await state.update_data(phone=message.text)
 
-    await users.update_user_phone(message.from_user.id, message.text)
+    await user_service.update_user_phone(message.from_user.id, message.text)
     await message.answer(
         "Введіть номер рахунку на який буде виплата",
         reply_markup=ReplyKeyboardRemove()
     )
 
 @router.message(Order.to_acc)
-async def process_to_acc(message: Message, state: FSMContext) -> None:
+async def process_to_acc(
+    message: Message,
+    state: FSMContext
+) -> None:
     """
     Eighth step
     Saves account from prev step
@@ -262,5 +313,5 @@ Email {data['email']}
 Увага! Курс буде зафіксовано тільки після створення заявки.
 """
     await message.answer(
-        summary_text, parse_mode="HTML", reply_markup=create_order.builder().as_markup()
+        summary_text, parse_mode="HTML", reply_markup=create_order_btn.builder().as_markup()
     )
