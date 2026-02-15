@@ -40,11 +40,10 @@ services:
   postgres:
     image: postgres:latest
     restart: always
-    shm_size: 128mb
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -76,6 +75,7 @@ services:
     tty: true
     volumes:
       - ./:/app
+
 volumes:
   redis_data:
   postgres_data:
