@@ -2,6 +2,8 @@
 
 Half-working telegram bot for crypto exchange.
 
+> **Note:** The bot is only partially implemented. It collects user contact info and lets users choose currency and pair — i.e. all the preparation steps — but **it does not place real orders** or perform actual exchange. No real exchange is executed after the flow.
+
 ## Tech stack
 
 - [aiogram](https://docs.aiogram.dev/) 3.x — Telegram Bot API
